@@ -1,0 +1,134 @@
+;******************************************************************************
+;Universidad del Valle de Guatemala
+;IE2023: Programacion de Microcontroladores 
+;Antirebote.asm
+;Autor; Joao Santos
+;Proyecto; LAB 3
+;Hardware: Atemega328P
+;Creado: 19/02/2024
+;Ultima modificacion: 20/02/2024
+;******************************************************************************
+
+;******************************************************************************
+;ENCABEZADO
+;******************************************************************************
+.include "M328PDEF.inc"
+
+.cseg
+.org 0x00
+	JMP MAIN
+
+.org 0x0020
+	JMP INT_TMR0
+
+;******************************************************************************
+;STACK POINTER
+;******************************************************************************
+Main: 
+	LDI R16, LOW(RAMEND)
+	OUT SPL, R16
+	LDI R17, HIGH(RAMEND)
+	OUT SPH, R17
+
+;******************************************************************************
+;TABLA
+;******************************************************************************
+
+TABLAVALORES: .DB 0x40, 0x79, 0x24, 0x30, 0x19, 0x12, 0x02, 0x78, 0x00, 0x10, 0x08, 0x03, 0x46, 0x21, 0x06, 0x0E
+
+;******************************************************************************
+;SETUP
+;******************************************************************************
+SETUP:
+
+	LDI ZH, HIGH(TABLAVALORES << 1)			;CONFIGURAR TABLA
+	LDI ZL, LOW(TABLAVALORES << 1)			;INICIA EN 0x4C POR NO SE QUE MOTIVOS =)
+
+
+	LDI R16, (1 << CLKPCE)					;PRESCALER PARA 1 MHz
+	STS CLKPR, R16 
+	LDI R16, 0b0000_0100
+	STS CLKPR, R16							;DIVIDIR LA FRECUENCIA POR 16
+
+	LDI R16, 0b0000_0000					;PUERTO C COMO ENTRADAS
+	OUT	DDRC, R16
+	LDI R16, 0b0000_1111					;PUERTOS C CON PULLUPS
+	OUT PORTC, R16
+	
+	LDI R16, 0b1111_1111					;PUERTO D COMO SALIDA
+	OUT DDRD, R16
+
+	LDI R16, (1<<TOIE0)
+	STS TIMSK0, R16
+	SEI
+
+	CALL Timer0								;SUBRUTINA DEL TIMER0
+
+
+	LDI R22, 0x00
+	LPM R22, Z								;SETEAR 0 EN EL DISPLAY
+	OUT PORTD, R22
+
+	LDI R18, 0b1111_1111
+	LDI R20, 0x00
+	LDI R21, 0X00
+
+
+	
+;******************************************************************************
+;CODE
+;******************************************************************************
+
+LOOP:
+	OUT PORTD, R22							;SACAR POR EL PUERTO DE EL NUMERO QUE SE QUIERA VER
+	RJMP LOOP
+
+
+;******************************************************************************
+;INTERRUPCIONES
+;******************************************************************************
+
+INT_TMR0:
+	PUSH R16
+	IN R16, SREG
+	PUSH R16
+
+	INC R21
+	CPI R21, 7								;LOOP HASTA QUE PASE 1s APROX
+	BRNE BAI
+	JMP Display
+
+Display:
+	LDI R21, 0x00
+	CPI ZL, 0x5B							;VERIFICAR SI HAY OVERFLOW
+	BRNE SinOver
+	LDI ZL, 0x4C							;REGRESAR EL PUNTERO A LA POSICION 0
+	LPM R22, Z								;CARGAR EL VALOR ACTUAL DE LA TABLA
+	JMP BAI
+
+SinOver:
+	LDI R22, 1
+	ADD ZL, R22								;INCREMENTAR UNA POCICION DE LA TABLA
+	LPM R22, Z								;CARGAR EL VALOR ACTUAL DE LA TABLA
+	JMP BAI
+
+BAI:
+	LDI R16, 20
+	OUT TCNT0, R16							;CARGAR 15 ms
+	SBI TIFR0, TOV0							;LIMPIAR LA BANDERA 
+	POP R16
+	OUT SREG, R16
+	POP R16
+	RETI
+
+;******************************************************************************
+;SUBRUTINAS
+;******************************************************************************
+
+Timer0:
+	LDI R16, (1 << CS02) | (1 << CS00)		;PRESCALER 1024
+	OUT TCCR0B, R16
+		
+	LDI R16, 20								;15ms
+	OUT TCNT0, R16
+	RET
