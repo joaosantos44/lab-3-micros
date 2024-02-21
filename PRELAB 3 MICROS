@@ -1,0 +1,84 @@
+;******************************************************************************
+;Universidad del Valle de Guatemala
+;IE2023: Programacion de Microcontroladores
+;Antirebote.asm
+;Autor; Joao Santos
+;Proyecto; PRELAB 3
+;Hardware: Atemega328P
+;Creado: 06/02/2024
+;Ultima modificacion: 12/02/2024
+;******************************************************************************
+;******************************************************************************
+;ENCABEZADO
+;******************************************************************************
+.include "M328PDEF.inc"
+.cseg
+.def cont_4b = R20
+.org 0x0000
+jmp SATACK ; vector reset
+.org 0x0006 ; vector de ISR: PCINT0
+jmp ISR_PCINT0
+;******************************************************************************
+;STACK POINTER
+;******************************************************************************
+STACK:
+LDI R16, LOW(RAMEND)
+OUT SPL, R16
+LDI R17, HIGH(RAMEND)
+OUT SPH, R17
+;******************************************************************************
+;CONFIGURACION
+;******************************************************************************
+SETUP:
+sbi DDRB, PB5
+cbi PORTB, PB5
+LDI R16, 0b0011_1111
+out DDRD, R16
+sbi PORTB, PB0
+cbi DDRB, PB0
+sbi PORTB, PB1
+cbi DDRB, PB1
+ldi R16, (1 << PCINT1)|(1 << PCINT0)
+sts PCMSK0, R16
+ldi R16, (1 << PCIE0)
+sts PCICR, R16
+sei
+ldi cont_4b, 0
+ldi R21, 0
+;******************************************************************************
+;GENERAL
+;******************************************************************************
+LOOP:
+mov R21, cont_4b
+lsl R21
+lsl R21
+out PORTD, R21
+jmp LOOP
+;******************************************************************************
+;ISR INT0
+;******************************************************************************
+ISR_PCINT0:
+push R16
+in R16, SREG
+push R16
+in R18, PINB
+sbrc R18, PB0
+jmp ENTRADAB1
+inc cont_4b
+cpi cont_4b, 16
+brne SALIDA
+ldi cont_4b, 0
+jmp SALIDA
+ENTRADAB1:
+sbrc R18, PB1
+jmp SALIDA
+dec cont_4b
+brne SALIDA
+ldi cont_4b, 15
+SALIDA:
+sbi PINB, PB5 ; toggle de PB5
+sbi PCIFR, PCIF0 ; bandera ISR PCINT0 OFF
+pop R16 ; obtener valores
+out SREG, R16
+pop R16
+reti
